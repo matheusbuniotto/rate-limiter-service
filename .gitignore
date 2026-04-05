@@ -1,3 +1,18 @@
 # neurobuild — arquivos locais de sessão
 .project/SESSION.md
 .project/*.bak
+
+# workspace local
+.claude/
+.vscode/
+__pycache__/
+**/__pycache__/
+*.pyc
+*.pyo
+
+# scripts de sessão
+brain-index.sh
+memory-decay.sh
+project-health.sh
+project-log.sh
+project.yml

@@ -19,15 +19,32 @@ Sem frameworks. Sem Redis. Só Python e lógica.
 ## Uso
 
 ```python
-from src.token_bucket import TokenBucket
+from src.factory import create_limiter
 
-# 10 requests por minuto
-limiter = TokenBucket(capacity=10, refill_rate=10/60)
+# via factory — troca o algoritmo sem mudar o código cliente
+limiter = create_limiter("token_bucket", capacity=10, refill_rate=1/60)
 
-if limiter.is_allowed():
+if limiter.is_allowed("user_123"):
     print("request permitido")
 else:
     print("rate limit atingido")
+```
+
+### Simulação comparativa
+
+```bash
+uv run main.py
+```
+
+```
+=======================================================
+  Comparativo — 100 usuários, limite 10 req/min
+=======================================================
+Algoritmo            Requests       OK  Bloqueado  Block%
+-------------------------------------------------------
+token_bucket             1050     1000         50    4.8%
+sliding_window           1050      998         52    5.0%
+=======================================================
 ```
 
 ---
@@ -53,7 +70,13 @@ tokens = min(tokens + tokens_gerados, capacity)
 src/
 ├── rate_limiter.py       # Interface base (RateLimiter ABC)
 ├── token_bucket.py       # Token Bucket + TokenBucketStore
-└── sliding_window.py     # Sliding Window Log + SlidingWindowStore
+├── sliding_window.py     # Sliding Window Log + SlidingWindowStore
+└── factory.py            # Factory: cria qualquer limiter por nome
+main.py                   # Simulação comparativa entre algoritmos
+tests/
+├── test_token_bucket.py
+├── test_sliding_window.py
+└── test_factory.py
 docs/
 ├── index.html            # Diagrama visual interativo
 └── decisions/
@@ -75,6 +98,7 @@ docs/
 - [x] Token Bucket
 - [x] Sliding Window Log
 - [x] Interface unificada (`RateLimiter` base class)
-- [ ] Factory pattern: trocar algoritmo sem mudar código cliente
-- [ ] Testes comparativos entre algoritmos
+- [x] Factory pattern: trocar algoritmo sem mudar código cliente
+- [x] Simulação comparativa entre algoritmos
+- [ ] Leaky Bucket
 - [ ] Análise de trade-offs com exemplos reais
