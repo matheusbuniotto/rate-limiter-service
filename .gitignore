@@ -1,0 +1,3 @@
+# neurobuild — arquivos locais de sessão
+.project/SESSION.md
+.project/*.bak

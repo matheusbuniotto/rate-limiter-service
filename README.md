@@ -11,8 +11,8 @@ Sem frameworks. Sem Redis. Só Python e lógica.
 | Algoritmo | Status | Quando usar |
 |---|---|---|
 | Token Bucket | ✅ Implementado | Controle simples com burst permitido |
-| Sliding Window Log | 🔜 Em breve | Janela de tempo precisa, sem burst |
-| Leaky Bucket | 🔜 Em breve | Taxa de saída estritamente uniforme |
+| Sliding Window Log | ✅ Implementado | Janela de tempo precisa, sem burst |
+| Leaky Bucket | ⏭ Pulado | Taxa de saída estritamente uniforme |
 
 ---
 
@@ -51,7 +51,9 @@ tokens = min(tokens + tokens_gerados, capacity)
 
 ```
 src/
-└── token_bucket.py       # Token Bucket
+├── rate_limiter.py       # Interface base (RateLimiter ABC)
+├── token_bucket.py       # Token Bucket + TokenBucketStore
+└── sliding_window.py     # Sliding Window Log + SlidingWindowStore
 docs/
 ├── index.html            # Diagrama visual interativo
 └── decisions/
@@ -71,8 +73,8 @@ docs/
 ## Roadmap
 
 - [x] Token Bucket
-- [ ] Sliding Window Log
-- [ ] Leaky Bucket
-- [ ] Interface unificada (`RateLimiter` base class)
+- [x] Sliding Window Log
+- [x] Interface unificada (`RateLimiter` base class)
+- [ ] Factory pattern: trocar algoritmo sem mudar código cliente
 - [ ] Testes comparativos entre algoritmos
 - [ ] Análise de trade-offs com exemplos reais
