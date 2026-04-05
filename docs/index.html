@@ -1,0 +1,662 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Token Bucket — Rate Limiter</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=VT323&family=Space+Mono:wght@400;700&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --font-body: 'IBM Plex Sans', system-ui, sans-serif;
+    --font-mono: 'Space Mono', 'SF Mono', Consolas, monospace;
+    --font-retro: 'VT323', monospace;
+
+    --bg: #1a0a2e;
+    --surface: #22103a;
+    --surface2: #2a1545;
+    --border: rgba(238,167,39,0.12);
+    --border-bright: rgba(238,167,39,0.28);
+    --text: #f5e6c8;
+    --text-dim: #9a7f5a;
+
+    --purple: #85409D;
+    --purple-dim: rgba(133,64,157,0.18);
+    --purple-bright: #a855c8;
+    --gold: #EEA727;
+    --gold-dim: rgba(238,167,39,0.15);
+    --yellow: #FFEF5F;
+    --yellow-dim: rgba(255,239,95,0.12);
+
+    --accent: var(--gold);
+    --accent-dim: var(--gold-dim);
+    --green: #FFEF5F;
+    --green-dim: rgba(255,239,95,0.12);
+    --red: #ff5f7e;
+    --red-dim: rgba(255,95,126,0.12);
+    --token: var(--purple);
+  }
+
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: var(--font-body);
+    background: var(--bg);
+    background-image:
+      repeating-linear-gradient(0deg, transparent, transparent 31px, rgba(238,167,39,0.03) 31px, rgba(238,167,39,0.03) 32px),
+      repeating-linear-gradient(90deg, transparent, transparent 31px, rgba(238,167,39,0.03) 31px, rgba(238,167,39,0.03) 32px),
+      radial-gradient(ellipse at 15% 15%, rgba(133,64,157,0.18) 0%, transparent 55%),
+      radial-gradient(ellipse at 85% 85%, rgba(238,167,39,0.10) 0%, transparent 50%);
+    color: var(--text);
+    min-height: 100vh;
+    padding: 40px 24px 64px;
+  }
+
+  .page { max-width: 960px; margin: 0 auto; }
+
+  /* ── Scanlines overlay ── */
+  body::before {
+    content: '';
+    position: fixed; inset: 0;
+    background: repeating-linear-gradient(
+      0deg,
+      transparent,
+      transparent 2px,
+      rgba(0,0,0,0.06) 2px,
+      rgba(0,0,0,0.06) 4px
+    );
+    pointer-events: none;
+    z-index: 9999;
+  }
+
+  /* ── Header ── */
+  header { text-align: center; margin-bottom: 56px; }
+  header .eyebrow {
+    font-family: var(--font-retro);
+    font-size: 18px;
+    letter-spacing: 0.22em;
+    text-transform: uppercase;
+    color: var(--gold);
+    margin-bottom: 10px;
+    text-shadow: 0 0 12px rgba(238,167,39,0.5);
+  }
+  header h1 {
+    font-family: var(--font-retro);
+    font-size: clamp(42px, 8vw, 72px);
+    font-weight: 400;
+    letter-spacing: 0.06em;
+    color: var(--yellow);
+    text-shadow:
+      0 0 20px rgba(255,239,95,0.4),
+      0 0 40px rgba(255,239,95,0.15),
+      3px 3px 0 rgba(133,64,157,0.6);
+    margin-bottom: 14px;
+  }
+  header p {
+    font-size: 14px;
+    color: var(--text-dim);
+    max-width: 480px;
+    margin: 0 auto;
+    line-height: 1.7;
+    font-family: var(--font-mono);
+    font-size: 12px;
+  }
+
+  /* ── Section labels ── */
+  .section-label {
+    font-family: var(--font-retro);
+    font-size: 20px;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--gold);
+    margin-bottom: 16px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    text-shadow: 0 0 8px rgba(238,167,39,0.3);
+  }
+  .section-label::after {
+    content: '';
+    flex: 1;
+    height: 1px;
+    background: linear-gradient(90deg, rgba(238,167,39,0.4), transparent);
+  }
+
+  /* ── Cards ── */
+  .card {
+    background: var(--surface);
+    border: 1px solid var(--border-bright);
+    border-radius: 4px;
+    padding: 32px;
+    margin-bottom: 24px;
+    position: relative;
+    box-shadow:
+      0 0 0 1px rgba(133,64,157,0.15),
+      inset 0 1px 0 rgba(238,167,39,0.06),
+      0 4px 32px rgba(0,0,0,0.4);
+  }
+  /* retro corner accent */
+  .card::before {
+    content: '';
+    position: absolute;
+    top: -1px; left: -1px;
+    width: 24px; height: 24px;
+    border-top: 2px solid var(--gold);
+    border-left: 2px solid var(--gold);
+    border-radius: 4px 0 0 0;
+    opacity: 0.6;
+  }
+  .card::after {
+    content: '';
+    position: absolute;
+    bottom: -1px; right: -1px;
+    width: 24px; height: 24px;
+    border-bottom: 2px solid var(--purple-bright);
+    border-right: 2px solid var(--purple-bright);
+    border-radius: 0 0 4px 0;
+    opacity: 0.4;
+  }
+
+  /* ── Token Bucket SVG ── */
+  .bucket-section { margin-bottom: 32px; }
+  .bucket-wrapper {
+    display: flex;
+    gap: 40px;
+    align-items: flex-start;
+    flex-wrap: wrap;
+  }
+  .bucket-diagram { flex: 0 0 auto; }
+  .bucket-legend {
+    flex: 1;
+    min-width: 200px;
+    display: flex;
+    flex-direction: column;
+    gap: 18px;
+    padding-top: 8px;
+  }
+
+  .legend-item {
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+  }
+  .legend-dot {
+    width: 10px; height: 10px;
+    border-radius: 50%;
+    margin-top: 3px;
+    flex-shrink: 0;
+  }
+  .legend-text strong {
+    display: block;
+    font-size: 13px;
+    font-weight: 700;
+    color: var(--yellow);
+    margin-bottom: 3px;
+    font-family: var(--font-mono);
+  }
+  .legend-text span {
+    font-size: 12px;
+    color: var(--text-dim);
+    line-height: 1.55;
+  }
+  .mono {
+    font-family: var(--font-mono);
+    color: var(--gold);
+    font-size: 11px;
+    background: rgba(238,167,39,0.08);
+    padding: 1px 4px;
+    border-radius: 2px;
+  }
+
+  /* ── Scenarios ── */
+  .scenarios {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+    gap: 16px;
+    margin-bottom: 24px;
+  }
+
+  .scenario-card {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 20px;
+    position: relative;
+  }
+  .scenario-card.allowed { border-left: 3px solid var(--yellow); }
+  .scenario-card.rejected { border-left: 3px solid var(--red); }
+  .scenario-card.burst    { border-left: 3px solid var(--gold); }
+
+  .scenario-title {
+    font-family: var(--font-retro);
+    font-size: 18px;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    margin-bottom: 14px;
+  }
+  .allowed  .scenario-title { color: var(--yellow); text-shadow: 0 0 8px rgba(255,239,95,0.3); }
+  .rejected .scenario-title { color: var(--red);    text-shadow: 0 0 8px rgba(255,95,126,0.3); }
+  .burst    .scenario-title { color: var(--gold);   text-shadow: 0 0 8px rgba(238,167,39,0.3); }
+
+  .token-row {
+    display: flex; gap: 5px; margin-bottom: 8px; flex-wrap: wrap;
+  }
+  .token-circle {
+    width: 22px; height: 22px;
+    border-radius: 50%;
+    background: var(--purple);
+    border: 1px solid rgba(255,239,95,0.25);
+    opacity: 0.9;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 8px; font-weight: 700; color: var(--yellow);
+    font-family: var(--font-mono);
+    box-shadow: 0 0 6px rgba(133,64,157,0.5);
+  }
+  .token-circle.empty {
+    background: transparent;
+    border: 1px dashed rgba(238,167,39,0.2);
+    box-shadow: none;
+    opacity: 0.35;
+  }
+  .token-circle.consumed {
+    background: var(--red);
+    border-color: rgba(255,95,126,0.4);
+    box-shadow: 0 0 6px rgba(255,95,126,0.4);
+  }
+
+  .scenario-desc {
+    font-size: 12px;
+    color: var(--text-dim);
+    line-height: 1.6;
+    margin-top: 10px;
+    font-family: var(--font-mono);
+  }
+  .scenario-desc code {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    background: rgba(238,167,39,0.08);
+    border: 1px solid rgba(238,167,39,0.15);
+    padding: 1px 5px;
+    border-radius: 2px;
+    color: var(--gold);
+  }
+
+  .badge {
+    display: inline-flex; align-items: center; gap: 5px;
+    font-family: var(--font-retro); font-size: 16px;
+    padding: 2px 10px; border-radius: 2px; margin-top: 8px;
+    letter-spacing: 0.08em;
+  }
+  .badge.ok   { background: rgba(255,239,95,0.1);  color: var(--yellow); border: 1px solid rgba(255,239,95,0.25); }
+  .badge.no   { background: rgba(255,95,126,0.1);  color: var(--red);    border: 1px solid rgba(255,95,126,0.25); }
+  .badge.warn { background: rgba(238,167,39,0.1);  color: var(--gold);   border: 1px solid rgba(238,167,39,0.25); }
+
+  /* ── System Design ── */
+  .sysdesign {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0;
+    flex-wrap: wrap;
+    padding: 24px 0;
+  }
+
+  .sd-node {
+    background: var(--surface2);
+    border: 1px solid var(--border-bright);
+    border-radius: 4px;
+    padding: 16px 20px;
+    text-align: center;
+    min-width: 140px;
+  }
+  .sd-node .node-icon { font-size: 24px; margin-bottom: 6px; }
+  .sd-node .node-label {
+    font-family: var(--font-retro);
+    font-size: 18px;
+    letter-spacing: 0.06em;
+    color: var(--text);
+    margin-bottom: 4px;
+  }
+  .sd-node .node-sub {
+    font-family: var(--font-mono); font-size: 10px; color: var(--text-dim);
+  }
+  .sd-node.highlighted {
+    border-color: var(--gold);
+    background: var(--gold-dim);
+    box-shadow:
+      0 0 0 1px rgba(238,167,39,0.3),
+      0 0 24px rgba(238,167,39,0.12),
+      inset 0 0 20px rgba(133,64,157,0.08);
+  }
+  .sd-node.highlighted .node-label { color: var(--yellow); text-shadow: 0 0 10px rgba(255,239,95,0.3); }
+
+  .sd-arrow {
+    display: flex; flex-direction: column; align-items: center;
+    padding: 0 8px; gap: 3px;
+  }
+  .sd-arrow svg { color: var(--text-dim); }
+  .sd-arrow .arrow-label {
+    font-family: var(--font-mono); font-size: 9px;
+    color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.08em;
+    white-space: nowrap;
+  }
+
+  .callout {
+    background: rgba(133,64,157,0.12);
+    border: 1px solid rgba(133,64,157,0.3);
+    border-left: 3px solid var(--purple-bright);
+    border-radius: 4px;
+    padding: 14px 18px;
+    font-size: 13px;
+    color: #c4a0d8;
+    line-height: 1.7;
+    margin-top: 20px;
+    font-family: var(--font-mono);
+  }
+  .callout strong { color: var(--yellow); }
+  .callout code {
+    font-family: var(--font-mono); font-size: 11px;
+    background: rgba(133,64,157,0.2); padding: 1px 5px; border-radius: 2px;
+    color: var(--gold);
+    border: 1px solid rgba(133,64,157,0.3);
+  }
+
+  /* ── Trade-offs ── */
+  .tradeoffs {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 24px;
+  }
+  @media (max-width: 520px) { .tradeoffs { grid-template-columns: 1fr; } }
+
+  .tradeoff-col h4 {
+    font-family: var(--font-retro);
+    font-size: 20px;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    margin-bottom: 16px; padding-bottom: 8px;
+    border-bottom: 1px solid var(--border-bright);
+  }
+  .tradeoff-col.pros h4 { color: var(--yellow); text-shadow: 0 0 8px rgba(255,239,95,0.25); }
+  .tradeoff-col.cons h4 { color: var(--red);    text-shadow: 0 0 8px rgba(255,95,126,0.25); }
+  .tradeoff-col ul { list-style: none; display: flex; flex-direction: column; gap: 10px; }
+  .tradeoff-col li {
+    font-size: 12px; color: var(--text-dim); line-height: 1.55;
+    display: flex; gap: 8px;
+    font-family: var(--font-mono);
+  }
+  .tradeoff-col li::before { flex-shrink: 0; margin-top: 0; font-family: var(--font-retro); font-size: 16px; }
+  .pros li::before { content: '▶'; color: var(--yellow); }
+  .cons li::before { content: '▷'; color: var(--red); }
+
+  /* ── Animations ── */
+  @keyframes fadeUp {
+    from { opacity: 0; transform: translateY(16px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+  @keyframes flicker {
+    0%, 95%, 100% { opacity: 1; }
+    96% { opacity: 0.85; }
+    97% { opacity: 1; }
+    98% { opacity: 0.9; }
+  }
+
+  .card { animation: fadeUp 0.4s ease both; }
+  .card:nth-child(1) { animation-delay: 0.05s; }
+  .card:nth-child(2) { animation-delay: 0.1s; }
+  .card:nth-child(3) { animation-delay: 0.15s; }
+  .card:nth-child(4) { animation-delay: 0.2s; }
+
+  header h1 { animation: flicker 8s infinite; }
+
+  @media (prefers-reduced-motion: reduce) {
+    .card, header h1 { animation: none !important; }
+  }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <!-- Header -->
+  <header>
+    <div class="eyebrow">Rate Limiting · Design de Algoritmos</div>
+    <h1>Token Bucket</h1>
+    <p>Algoritmo de rate limiting que permite bursts controlados enquanto impõe um limite médio de throughput ao longo do tempo.</p>
+  </header>
+
+  <!-- 1. Mecanismo principal -->
+  <div class="section-label">01 · Mecanismo Principal</div>
+  <div class="card bucket-section">
+    <div class="bucket-wrapper">
+      <div class="bucket-diagram">
+        <svg width="220" height="320" viewBox="0 0 220 320" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <defs>
+            <marker id="arrowRight" markerWidth="8" markerHeight="8" refX="4" refY="4" orient="auto">
+              <path d="M0,0 L8,4 L0,8 z" fill="#FFEF5F"/>
+            </marker>
+          </defs>
+
+          <!-- refill_rate label -->
+          <text x="110" y="18" text-anchor="middle" font-family="Space Mono, monospace" font-size="10" fill="#EEA727" font-weight="700">refill_rate = 1 token/s</text>
+
+          <!-- Tokens caindo -->
+          <circle cx="90" cy="36" r="7" fill="#85409D" stroke="#FFEF5F" stroke-width="0.5" opacity="0.9">
+            <animate attributeName="cy" values="36;52" dur="1.2s" repeatCount="indefinite" calcMode="linear"/>
+            <animate attributeName="opacity" values="0;1;0" dur="1.2s" repeatCount="indefinite"/>
+          </circle>
+          <circle cx="110" cy="36" r="7" fill="#85409D" stroke="#FFEF5F" stroke-width="0.5" opacity="0.7">
+            <animate attributeName="cy" values="36;52" dur="1.2s" begin="0.4s" repeatCount="indefinite" calcMode="linear"/>
+            <animate attributeName="opacity" values="0;1;0" dur="1.2s" begin="0.4s" repeatCount="indefinite"/>
+          </circle>
+          <circle cx="130" cy="36" r="7" fill="#85409D" stroke="#FFEF5F" stroke-width="0.5" opacity="0.5">
+            <animate attributeName="cy" values="36;52" dur="1.2s" begin="0.8s" repeatCount="indefinite" calcMode="linear"/>
+            <animate attributeName="opacity" values="0;1;0" dur="1.2s" begin="0.8s" repeatCount="indefinite"/>
+          </circle>
+
+          <!-- Linha de capacity -->
+          <line x1="52" y1="56" x2="168" y2="56" stroke="rgba(238,167,39,0.45)" stroke-width="1" stroke-dasharray="3,3"/>
+          <text x="172" y="60" font-family="Space Mono, monospace" font-size="9" fill="#EEA727" opacity="0.8">capacity=10</text>
+
+          <!-- Corpo do bucket -->
+          <path d="M55 58 L55 240 Q55 255 70 260 L150 260 Q165 255 165 240 L165 58 Z"
+                fill="#2a1545" stroke="rgba(238,167,39,0.2)" stroke-width="1.5"/>
+          <!-- borda lateral retro -->
+          <line x1="55" y1="58" x2="55" y2="240" stroke="rgba(133,64,157,0.5)" stroke-width="2"/>
+          <line x1="165" y1="58" x2="165" y2="240" stroke="rgba(133,64,157,0.5)" stroke-width="2"/>
+
+          <!-- Tokens dentro (7 de 10) -->
+          <circle cx="82"  cy="240" r="8" fill="#85409D" stroke="rgba(255,239,95,0.3)" stroke-width="0.8"/>
+          <circle cx="110" cy="240" r="8" fill="#85409D" stroke="rgba(255,239,95,0.3)" stroke-width="0.8"/>
+          <circle cx="138" cy="240" r="8" fill="#85409D" stroke="rgba(255,239,95,0.3)" stroke-width="0.8"/>
+          <circle cx="82"  cy="218" r="8" fill="#85409D" stroke="rgba(255,239,95,0.3)" stroke-width="0.8"/>
+          <circle cx="110" cy="218" r="8" fill="#85409D" stroke="rgba(255,239,95,0.3)" stroke-width="0.8"/>
+          <circle cx="138" cy="218" r="8" fill="#85409D" stroke="rgba(255,239,95,0.3)" stroke-width="0.8"/>
+          <circle cx="82"  cy="196" r="8" fill="#85409D" stroke="rgba(255,239,95,0.3)" stroke-width="0.8"/>
+          <!-- Slots vazios -->
+          <circle cx="110" cy="196" r="8" fill="none" stroke="rgba(238,167,39,0.12)" stroke-width="1" stroke-dasharray="2,2"/>
+          <circle cx="138" cy="196" r="8" fill="none" stroke="rgba(238,167,39,0.12)" stroke-width="1" stroke-dasharray="2,2"/>
+          <circle cx="82"  cy="174" r="8" fill="none" stroke="rgba(238,167,39,0.12)" stroke-width="1" stroke-dasharray="2,2"/>
+
+          <text x="110" y="138" text-anchor="middle" font-family="Space Mono, monospace" font-size="11" fill="rgba(255,239,95,0.2)">7 tokens</text>
+
+          <!-- Seta de request -->
+          <line x1="165" y1="230" x2="194" y2="230" stroke="#FFEF5F" stroke-width="1.5" marker-end="url(#arrowRight)"/>
+          <text x="198" y="224" font-family="Space Mono, monospace" font-size="9" fill="#FFEF5F">request</text>
+          <text x="198" y="237" font-family="Space Mono, monospace" font-size="9" fill="#FFEF5F">→ ALLOW</text>
+          <text x="198" y="250" font-family="Space Mono, monospace" font-size="8" fill="rgba(255,239,95,0.4)">tokens: 7→6</text>
+
+          <!-- Labels do bucket -->
+          <text x="110" y="282" text-anchor="middle" font-family="Space Mono, monospace" font-size="10" fill="rgba(238,167,39,0.3)">tokens = 7 / 10</text>
+          <text x="110" y="298" text-anchor="middle" font-family="Space Mono, monospace" font-size="9" fill="rgba(238,167,39,0.18)">last_refill = time()</text>
+        </svg>
+      </div>
+
+      <div class="bucket-legend">
+        <div class="legend-item">
+          <div class="legend-dot" style="background: #85409D; box-shadow: 0 0 6px rgba(133,64,157,0.6);"></div>
+          <div class="legend-text">
+            <strong>capacity</strong>
+            <span>Máximo de tokens no bucket. <span class="mono">capacity=10</span> significa no máximo 10 tokens simultâneos.</span>
+          </div>
+        </div>
+        <div class="legend-item">
+          <div class="legend-dot" style="background: #EEA727; box-shadow: 0 0 6px rgba(238,167,39,0.5);"></div>
+          <div class="legend-text">
+            <strong>refill_rate</strong>
+            <span>Tokens adicionados por segundo. <span class="mono">refill_rate=1/s</span> → bucket cheio em 10s.</span>
+          </div>
+        </div>
+        <div class="legend-item">
+          <div class="legend-dot" style="background: #FFEF5F; box-shadow: 0 0 6px rgba(255,239,95,0.4);"></div>
+          <div class="legend-text">
+            <strong>is_allowed()</strong>
+            <span>Chama <span class="mono">_refill()</span> primeiro, depois verifica <span class="mono">tokens > 0</span>. Consome 1 token se permitido.</span>
+          </div>
+        </div>
+        <div class="legend-item">
+          <div class="legend-dot" style="background: transparent; border: 1px dashed rgba(238,167,39,0.3);"></div>
+          <div class="legend-text">
+            <strong>slot vazio</strong>
+            <span>Espaço ainda não recarregado. Quando <span class="mono">tokens=0</span> e chega request → REJEITA.</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 2. Cenários -->
+  <div class="section-label">02 · Cenários</div>
+  <div class="scenarios">
+
+    <!-- Permitido -->
+    <div class="scenario-card allowed">
+      <div class="scenario-title">▶ Request normal</div>
+      <div class="token-row">
+        <div class="token-circle">T</div>
+        <div class="token-circle">T</div>
+        <div class="token-circle">T</div>
+        <div class="token-circle">T</div>
+        <div class="token-circle">T</div>
+        <div class="token-circle">T</div>
+        <div class="token-circle consumed">−1</div>
+        <div class="token-circle empty"></div>
+        <div class="token-circle empty"></div>
+        <div class="token-circle empty"></div>
+      </div>
+      <div class="badge ok">▶ PERMITIDO</div>
+      <p class="scenario-desc">
+        <code>tokens=7</code> → request chega → <code>_refill()</code> adiciona tokens proporcionais ao tempo → 1 consumido → <code>tokens=6</code>.
+      </p>
+    </div>
+
+    <!-- Rejeitado -->
+    <div class="scenario-card rejected">
+      <div class="scenario-title">■ Bucket vazio</div>
+      <div class="token-row">
+        <div class="token-circle empty"></div>
+        <div class="token-circle empty"></div>
+        <div class="token-circle empty"></div>
+        <div class="token-circle empty"></div>
+        <div class="token-circle empty"></div>
+        <div class="token-circle empty"></div>
+        <div class="token-circle empty"></div>
+        <div class="token-circle empty"></div>
+        <div class="token-circle empty"></div>
+        <div class="token-circle empty"></div>
+      </div>
+      <div class="badge no">■ REJEITADO</div>
+      <p class="scenario-desc">
+        <code>tokens=0</code> → sem tokens para consumir → request rejeitado. Cliente precisa aguardar o refill.
+      </p>
+    </div>
+
+    <!-- Burst -->
+    <div class="scenario-card burst">
+      <div class="scenario-title">⚡ Burst (usuário ocioso volta)</div>
+      <div class="token-row">
+        <div class="token-circle" style="background:#EEA727; border-color:rgba(255,239,95,0.4); box-shadow:0 0 6px rgba(238,167,39,0.5)">T</div>
+        <div class="token-circle" style="background:#EEA727; border-color:rgba(255,239,95,0.4); box-shadow:0 0 6px rgba(238,167,39,0.5)">T</div>
+        <div class="token-circle" style="background:#EEA727; border-color:rgba(255,239,95,0.4); box-shadow:0 0 6px rgba(238,167,39,0.5)">T</div>
+        <div class="token-circle" style="background:#EEA727; border-color:rgba(255,239,95,0.4); box-shadow:0 0 6px rgba(238,167,39,0.5)">T</div>
+        <div class="token-circle" style="background:#EEA727; border-color:rgba(255,239,95,0.4); box-shadow:0 0 6px rgba(238,167,39,0.5)">T</div>
+        <div class="token-circle" style="background:#EEA727; border-color:rgba(255,239,95,0.4); box-shadow:0 0 6px rgba(238,167,39,0.5)">T</div>
+        <div class="token-circle" style="background:#EEA727; border-color:rgba(255,239,95,0.4); box-shadow:0 0 6px rgba(238,167,39,0.5)">T</div>
+        <div class="token-circle" style="background:#EEA727; border-color:rgba(255,239,95,0.4); box-shadow:0 0 6px rgba(238,167,39,0.5)">T</div>
+        <div class="token-circle" style="background:#EEA727; border-color:rgba(255,239,95,0.4); box-shadow:0 0 6px rgba(238,167,39,0.5)">T</div>
+        <div class="token-circle" style="background:#EEA727; border-color:rgba(255,239,95,0.4); box-shadow:0 0 6px rgba(238,167,39,0.5)">T</div>
+      </div>
+      <div class="badge warn">⚠ 10 requests instantâneos</div>
+      <p class="scenario-desc">
+        Usuário ocioso por 10s → <code>_refill()</code> calcula <code>10s × 1/s = 10 tokens</code>, limitado ao <code>capacity=10</code>. Bucket cheio. Usuário dispara 10 requests em milissegundos. Todos permitidos. <strong>Isso é burst.</strong>
+      </p>
+    </div>
+
+  </div>
+
+  <!-- 3. System Design -->
+  <div class="section-label">03 · Onde vive no sistema</div>
+  <div class="card">
+    <div class="sysdesign">
+      <div class="sd-node">
+        <div class="node-icon">💻</div>
+        <div class="node-label">Cliente</div>
+        <div class="node-sub">usuário / API key</div>
+      </div>
+
+      <div class="sd-arrow">
+        <svg width="32" height="16" viewBox="0 0 32 16"><path d="M0 8 L26 8 M20 3 L26 8 L20 13" stroke="currentColor" stroke-width="1.5" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        <div class="arrow-label">request</div>
+      </div>
+
+      <div class="sd-node highlighted">
+        <div class="node-icon">⚖️</div>
+        <div class="node-label">Load Balancer</div>
+        <div class="node-sub">estado do bucket aqui</div>
+      </div>
+
+      <div class="sd-arrow">
+        <svg width="32" height="16" viewBox="0 0 32 16"><path d="M0 8 L26 8 M20 3 L26 8 L20 13" stroke="currentColor" stroke-width="1.5" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        <div class="arrow-label">se permitido</div>
+      </div>
+
+      <div class="sd-node">
+        <div class="node-icon">🖥️</div>
+        <div class="node-label">Pool de Servidores</div>
+        <div class="node-sub">3× workers</div>
+      </div>
+    </div>
+
+    <div class="callout">
+      <strong>Por que não em cada servidor?</strong> Se cada um dos 3 servidores mantém seu próprio bucket em memória com <code>capacity=10</code>, um cliente efetivamente tem <code>3 × 10 = 30</code> requests permitidos — o limite perde o sentido. O estado precisa ser <strong>compartilhado</strong> no ponto de entrada. Em produção: Redis ou proxy sidecar. Neste projeto: in-memory, single-process — limitação conhecida (ver <code>PLAN.md → decisões adiadas</code>).
+    </div>
+  </div>
+
+  <!-- 4. Trade-offs -->
+  <div class="section-label">04 · Trade-offs</div>
+  <div class="card">
+    <div class="tradeoffs">
+      <div class="tradeoff-col pros">
+        <h4>▶ Vantagens</h4>
+        <ul>
+          <li>Simples de implementar — só um contador e um timestamp</li>
+          <li>Permite bursts controlados (feature intencional, não bug)</li>
+          <li>Parâmetros independentes: <span class="mono">capacity</span> e <span class="mono">refill_rate</span></li>
+          <li>O(1) por request — sem histórico de requisições</li>
+        </ul>
+      </div>
+      <div class="tradeoff-col cons">
+        <h4>▷ Desvantagens</h4>
+        <ul>
+          <li>Sem janela fixa — "exatamente 10/min" não é garantido</li>
+          <li>Burst pode sobrecarregar serviços downstream (DB, APIs)</li>
+          <li>Não distingue picos legítimos de ataques</li>
+          <li>Estado distribuído exige Redis ou coordenação externa</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+
+</div>
+</body>
+</html>
