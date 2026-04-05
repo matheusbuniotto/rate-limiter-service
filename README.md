@@ -1,6 +1,6 @@
-# Rate Limiter — Python
+# Rate Limiter
 
-Implementação de algoritmos de rate limiting em Python puro, focada em aprendizado de system design e portfolio de engenharia.
+Implementação de algoritmos de rate limiting em Python puro, focada em aprendizado de system design e engenharia.
 
 Sem frameworks. Sem Redis. Só Python e lógica.
 
