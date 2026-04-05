@@ -2,10 +2,10 @@
 > 2026-04-05
 
 ## Contexto
-Token Bucket controla volume médio, mas permite burst. Quando precisamos garantir que o cliente não ultrapasse o limite dentro de qualquer janela de tempo (não só em média), um algoritmo com memória de timestamps é necessário.
+Token Bucket controla volume médio, mas permite burst. Quando precisamos garantir que o cliente não ultrapasse o limite dentro de qualquer janela de tempo (não só em média), um algoritmo com memória de timestamps é melhor.
 
 ## Decisão
-Sliding Window Log: registra o timestamp de cada request aceito. A cada nova request, descarta os timestamps fora da janela e conta os que restam. Se a contagem estiver abaixo do limite, aceita e registra.
+Sliding Window: registra o timestamp/now() de cada request aceito. A cada novbo request, descarta os timestamps fora da janela e conta os que restam. Se a contagem estiver abaixo do limite, aceita e registra.
 
 ```
 janela = [agora - window_seconds, agora]
